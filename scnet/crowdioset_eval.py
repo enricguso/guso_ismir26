@@ -311,7 +311,10 @@ class Seperator:
 
     @property
     def instruments(self):
-        return ['bass', 'drums', 'other', 'vocals', 'audience']
+        if args.noisy:
+            return ['bass', 'drums', 'other', 'vocals', 'audience']
+        else:   
+            return ['bass', 'drums', 'other', 'vocals']
 
     def raise_aicrowd_error(self, msg):
         raise NameError(msg)
@@ -397,98 +400,136 @@ class Seperator:
             self.save_sources(separated_music_arrays, output_sample_rates, save_dir)
 
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
+    global args
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default='b1', help="which model we use")
     parser.add_argument("--reverberant", dest='reverberant', action='store_true')    
+    parser.add_argument("--noisy", dest='noisy', action='store_true')    
+    parser.add_argument("--music_test_set_path", type=str, default='.', help="path to mixture .wav directory")
+    parser.add_argument("--rirs_test_set_path", type=str, default='.', help="path to rirs .wav directory")
+
     args = parser.parse_args()
+    if torch.cuda.is_available():
+            DEVICE = torch.device('cuda')
+    else:
+            DEVICE = torch.device('cpu')
+
     set_seed(42)
 
-    with open('/home/enric.guso@local.eurecat.org/guso_parirset/conf/crowdioset_wet_lrE2.yaml', 'r') as file:
-        config = ConfigDict(yaml.load(file, Loader=yaml.FullLoader))
+    if not args.noisy and not args.reverberant:
+        print("Inference on clean version of the model")
+        model_name = 'M1_clean'
+        with open('conf/ismir26_clean.yaml', 'r') as file:
+            config = ConfigDict(yaml.load(file, Loader=yaml.FullLoader))
+    elif not args.noisy and args.reverberant:
+        print("Evaluating rev version of the model")
+        model_name = 'M2_reverberant'
+        with open('conf/ismir26_rev.yaml', 'r') as file:
+            config = ConfigDict(yaml.load(file, Loader=yaml.FullLoader))
+    elif args.noisy and not args.reverberant:
+        print("Evaluating noisy version of the model")
+        model_name = 'M3_noisy'
+        with open('conf/ismir26_noisy.yaml', 'r') as file:
+            config = ConfigDict(yaml.load(file, Loader=yaml.FullLoader))
+    else:
+        print("Evaluating noisyrev version of the model")
+        model_name = 'M4_noisyrev'
+        with open('conf/ismir26_noisyrev.yaml', 'r') as file:
+            config = ConfigDict(yaml.load(file, Loader=yaml.FullLoader))
 
-    model_name = args.model_name
-    model_path = os.path.join('/media/diskA/enric/parirset_models', model_name)
-
-    music_test_set_path = '/media/diskA/enric/musdbmoises/test'
-    rir_test_set_path = '/media/diskA/enric/parirset/test'
+    model_path = os.path.join('models', model_name)
+    music_test_set_path = args.music_test_set_path
     model = SCNet(**config.model)
     model.eval();
+
     seperator = Seperator(model, os.path.join(model_path,'model.th'))
 
     songs = os.listdir(music_test_set_path)
     songs.sort()
-    rirs_paths = os.listdir(rir_test_set_path)
-    rirs_paths.sort()
-
-    step = len(rirs_paths) / len(songs)
-    rirs_paths = [rirs_paths[int(i * step)] for i in range(len(songs))]
-    rirs_paths = rirs_paths[:len(songs)]
-
-    drrs_factors = [1.0, 0.5, 0.25, 0.01]
-    d = []
     if args.reverberant:
-        print("Evaluating reverberant version of the model")
-    else:
-        print("Evaluating dry version of the model")
+        rirs_paths = os.listdir(args.rirs_test_set_path)
+        rirs_paths.sort()
+        step = len(rirs_paths) / len(songs)
+        rirs_paths = [rirs_paths[int(i * step)] for i in range(len(songs))]
+        rirs_paths = rirs_paths[:len(songs)]
+
+        drrs_factors = [1.0, 0.5, 0.25, 0.01]
+
+    d = []
 
     for i, song in tqdm.tqdm(enumerate(songs)):
         drums, fs = torchaudio.load(os.path.join(os.path.join(music_test_set_path, song), 'drums.wav'))
         bass, fs = torchaudio.load(os.path.join(os.path.join(music_test_set_path, song), 'bass.wav'))
         vocals, fs = torchaudio.load(os.path.join(os.path.join(music_test_set_path, song), 'vocals.wav'))
         other, fs = torchaudio.load(os.path.join(os.path.join(music_test_set_path, song), 'other.wav'))
-        audience, fs = torchaudio.load(os.path.join(os.path.join(music_test_set_path, song), 'audience.wav'))
+        if args.noisy:
+            audience, fs = torchaudio.load(os.path.join(os.path.join(music_test_set_path, song), 'audience.wav'))
+            sources = torch.stack((drums, bass, other, vocals, audience)).unsqueeze(0)
+        else:
+            sources = torch.stack((drums, bass, other, vocals)).unsqueeze(0)
 
-        rir, fs_rir = torchaudio.load(os.path.join(os.path.join(rir_test_set_path, rirs_paths[i])))
-        # now decrease a bit reverberation
-        midx = torch.argmax(torch.abs(rir), axis=1)
-        l = rir[0, midx[0]].clone().detach()
-        r = rir[1, midx[1]].clone().detach()
-        rir *= drrs_factors[i % 4]
-        rir[0, midx[0]] = l
-        rir[1, midx[1]] = r
-        sources = torch.stack((drums, bass, other, vocals, audience)).unsqueeze(0)
-        
-        rirs = rir.unsqueeze(0)
-        
         if args.reverberant:
+            rir, fs_rir = torchaudio.load(os.path.join(os.path.join(rir_test_set_path, rirs_paths[i])))
+            # now decrease a bit reverberation
+            midx = torch.argmax(torch.abs(rir), axis=1)
+            l = rir[0, midx[0]].clone().detach()
+            r = rir[1, midx[1]].clone().detach()
+            rir *= drrs_factors[i % 4]
+            rir[0, midx[0]] = l
+            rir[1, midx[1]] = r
+            rirs.unsqueeze_(0)
             sources = conv_torch(sources, rirs)
-        
         mix = sources.sum(dim=1)
         
         with torch.no_grad():
             estimates, _ = seperator.separate_music_file(mix[0].T.numpy(), 44100)
-            sdrs = new_sdr(sources, 
-                        torch.stack((torch.from_numpy(estimates['drums'].T), 
-                                        torch.from_numpy(estimates['bass'].T), 
-                                        torch.from_numpy(estimates['other'].T),
-                                        torch.from_numpy(estimates['vocals'].T),
-                                        torch.from_numpy(estimates['audience'].T))).unsqueeze(0))
+
+            if args.noisy:
+                sdrs = new_sdr(sources, 
+                            torch.stack((torch.from_numpy(estimates['drums'].T), 
+                                            torch.from_numpy(estimates['bass'].T), 
+                                            torch.from_numpy(estimates['other'].T),
+                                            torch.from_numpy(estimates['vocals'].T,
+                                            torch.from_numpy(estimates['audience'].T)))).unsqueeze(0))
+            else:
+                sdrs = new_sdr(sources, 
+                            torch.stack((torch.from_numpy(estimates['drums'].T), 
+                                            torch.from_numpy(estimates['bass'].T), 
+                                            torch.from_numpy(estimates['other'].T),
+                                            torch.from_numpy(estimates['vocals'].T))).unsqueeze(0))
+
             d.append({"model_name": model_name,
+                    "eval": 'clean',
                     "song": song,
-                    "rir": rirs_paths[i],
+                    "rir": None,
                     "source": 'drums',
                     "sdr": sdrs[0,0].item()})
             d.append({"model_name": model_name,
+                    "eval": 'clean',
                     "song": song,
-                    "rir": rirs_paths[i],
+                    "rir": None,
                     "source": 'bass',
                     "sdr": sdrs[0,1].item()})
             d.append({"model_name": model_name,
+                    "eval": 'clean',
                     "song": song,
-                    "rir": rirs_paths[i],
+                    "rir": None,
                     "source": 'other',
                     "sdr": sdrs[0,2].item()})
             d.append({"model_name": model_name,
+                    "eval": 'clean',
                     "song": song,
-                    "rir": rirs_paths[i],
+                    "rir": None,
                     "source": 'vocals',
                     "sdr": sdrs[0,3].item()})
-            d.append({"model_name": model_name,
+            if args.noisy:
+                d.append({"model_name": model_name,
+                    "eval": 'clean',
                     "song": song,
-                    "rir": rirs_paths[i],
+                    "rir": None,
                     "source": 'audience',
                     "sdr": sdrs[0,4].item()})
         df = pd.DataFrame.from_dict(d)
-    df.to_excel(os.path.join('/media/diskA/enric/parirset_models/results/' + model_name + '.xlsx'), index=False)
+
+    df.to_excel(os.path.join('results', model_name + '.xlsx'), index=False)
