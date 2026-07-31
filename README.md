@@ -1,6 +1,7 @@
 # SCNET training on CrowdioSet and PaRIRset
 
-Official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source Separation](http://arxiv.org/abs/2607.27828) 
+Code to reproduce [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source Separation]
+
 Enric Gusó (enricguso@gmail.com) and Xavier Serra (xavier.serra@upf.edu), ISMIR 2026).
 
 🔗 [Project website](https://enricguso.github.io/crowdioset_parirset/) &nbsp;|&nbsp; 📄 [Paper](http://arxiv.org/abs/2607.27828) &nbsp;|&nbsp; ▶️ [Video](https://www.youtube.com/shorts/HMnkdiiMKA8) &nbsp;|&nbsp; 🤗 [CrowdioSet](https://doi.org/10.57967/hf/9773) &nbsp;|&nbsp; 🤗 [PaRIRset](https://doi.org/10.57967/hf/9774)
