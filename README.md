@@ -1,6 +1,6 @@
-# CrowdioSet and PaRIRset
+# SCNET training on CrowdioSet and PaRIRset
 
-Official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source Separation](http://arxiv.org/abs/2607.27828) (ISMIR 2026).
+Official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source Separation](http://arxiv.org/abs/2607.27828) (Enric Gusó and Xavier Serra, ISMIR 2026).
 
 🔗 [Project website](https://enricguso.github.io/crowdioset_parirset/) &nbsp;|&nbsp; 📄 [Paper](http://arxiv.org/abs/2607.27828)
 
@@ -19,12 +19,6 @@ Official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live M
 - [Citing](#citing)
 
 ---
-
-## Setup
-
-```bash
-pip install -r requirements.txt
-```
 
 ## Preparing the data
 
@@ -56,6 +50,12 @@ Data prep merges **MUSDB18HQ**, **MOISESDB**, **CrowdioSet** and **PaRIRset** in
      --crowdioset_path crowdioset
    ```
 
+## Installation of SCNet
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Models
 
 Four checkpoints are provided under [`models/`](models/), each trained on a different data combination and paired with a config in [`conf/`](conf/):
@@ -68,6 +68,7 @@ Four checkpoints are provided under [`models/`](models/), each trained on a diff
 | `noisyrev` | `models/M4_noisyrev` | `conf/ismir26_noisyrev.yaml` | (MUSDBMOISES + CrowdioSet) × PaRIRset |
 
 ## Training
+Two training scripts, with and without `audience` stems:
 
 ```bash
 # noisy (default)
