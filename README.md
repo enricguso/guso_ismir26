@@ -1,98 +1,116 @@
 # CrowdioSet and PaRIRset
 
-This repository is the official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source  Separation](http://arxiv.org/abs/2607.27828). You can find the project website [here](https://enricguso.github.io/crowdioset_parirset/).
+Official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source Separation](http://arxiv.org/abs/2607.27828) (ISMIR 2026).
 
-![pipeline](images/pipeline.png)
+🔗 [Project website](https://enricguso.github.io/crowdioset_parirset/) &nbsp;|&nbsp; 📄 [Paper](http://arxiv.org/abs/2607.27828)
+
+![Pipeline overview](images/pipeline.png)
 
 ---
 
-## Preparing the data (MOISESDB + MUSDB18HQ + CROWDIOSET + PARIRSET)
+## Contents
 
-Download [MOISESDB dataset](https://music.ai/research/)
-Install HF CLI `curl -LsSf https://hf.co/cli/install.sh | bash`
-Download the remaining datasets and unzip:
+- [Setup](#setup)
+- [Preparing the data](#preparing-the-data)
+- [Models](#models)
+- [Training](#training)
+- [Inference](#inference)
+- [Evaluation](#evaluation)
+- [Citing](#citing)
 
-```bash
-curl -L -C - -o musdb18hq.zip "https://zenodo.org/records/3338373/files/musdb18hq.zip?download=1"
-unzip musdb18hq.zip -d musdb18hq
-unzip moisesdb.zip -d moisesdb
-hf download enricguso/crowdioset --repo-type dataset --local-dir crowdioset
-hf download enricguso/parirset --repo-type dataset --local-dir parirset
-```
+---
 
-Then, you need to install the MOISESDB parser requirements.
+## Setup
 
 ```bash
-pip install git+https://github.com/moises-ai/moises-db.git
+pip install -r requirements.txt
 ```
 
-Then run `prepare_musdbmoises.py`, which merges MUSDB18HQ, MOISESDB and the CrowdioSet singalongs into an output `musdbmoises` dir:
+## Preparing the data
 
-```bash
-python prepare_musdbmoises.py --moises_path moisesdb --musdb_path musdb18hq --out_path musdbmoises --crowdioset_path crowdioset
-```
+Data prep merges **MUSDB18HQ**, **MOISESDB**, **CrowdioSet** and **PaRIRset** into a single training set.
 
+1. Download [MOISESDB](https://music.ai/research/) (requires filling a request form).
+2. Install the Hugging Face CLI:
+   ```bash
+   curl -LsSf https://hf.co/cli/install.sh | bash
+   ```
+3. Download and unzip the remaining datasets:
+   ```bash
+   curl -L -C - -o musdb18hq.zip "https://zenodo.org/records/3338373/files/musdb18hq.zip?download=1"
+   unzip musdb18hq.zip -d musdb18hq
+   unzip moisesdb.zip -d moisesdb
+   hf download enricguso/crowdioset --repo-type dataset --local-dir crowdioset
+   hf download enricguso/parirset --repo-type dataset --local-dir parirset
+   ```
+4. Install the MOISESDB parser:
+   ```bash
+   pip install git+https://github.com/moises-ai/moises-db.git
+   ```
+5. Merge MUSDB18HQ, MOISESDB and the CrowdioSet singalongs into `musdbmoises`:
+   ```bash
+   python prepare_musdbmoises.py \
+     --moises_path moisesdb \
+     --musdb_path musdb18hq \
+     --out_path musdbmoises \
+     --crowdioset_path crowdioset
+   ```
 
-## Install additional requirements for SCNet inference or training
-```bash
-pip install -r requirements.txt 
-```
+## Models
+
+Four checkpoints are provided under [`models/`](models/), each trained on a different data combination and paired with a config in [`conf/`](conf/):
+
+| Model | Directory | Config | Training data |
+|---|---|---|---|
+| `clean` | `models/M1_clean` | `conf/ismir26_clean.yaml` | MUSDBMOISES |
+| `rev` | `models/M2_reverberant` | `conf/ismir26_rev.yaml` | MUSDBMOISES × PaRIRset |
+| `noisy` (default, used in the subjective eval) | `models/M3_noisy` | `conf/ismir26_noisy.yaml` | MUSDBMOISES + CrowdioSet |
+| `noisyrev` | `models/M4_noisyrev` | `conf/ismir26_noisyrev.yaml` | (MUSDBMOISES + CrowdioSet) × PaRIRset |
 
 ## Training
 
-Default `noisy` model (MUSDBMOISES+CrowdioSet w/o reverb, the one from the subjective eval) is trained:
 ```bash
+# noisy (default)
 python3 scnet/train_noisy.py --config_path conf/ismir26_noisy.yaml --save_path path/to/save/checkpoint/
-```
-To train a `noisyrev` model on (MUSDBMOISES+CrowdioSet)*PaRIRset use:
-```bash
+
+# noisyrev
 python3 scnet/train_noisy.py --config_path conf/ismir26_noisyrev.yaml --save_path path/to/save/checkpoint/
-```
-To train the `clean` model (MUSDBMOISES+CrowdioSet):
-```bash
+
+# clean
 python3 scnet/train_clean.py --config_path conf/ismir26_clean.yaml --save_path path/to/save/checkpoint/
-```
-To train the `rev` reverberant model (MUSDBMOISES+CrowdioSet)*PaRIRset:
-```bash
+
+# rev
 python3 scnet/train_clean.py --config_path conf/ismir26_rev.yaml --save_path path/to/save/checkpoint/
 ```
----
 
 ## Inference
 
-The model checkpoints are found under `/models` and can be used with the provided `scnet/inference.py` script, which selects a checkpoint with the arguments `--noisy` and `--reverberant`.
+[`scnet/inference.py`](scnet/inference.py) separates a mixture with a checkpoint selected via the `--noisy` and `--reverberant` flags:
 
-Inference with the default `noisy` model (MUSDBMOISES+CrowdioSet w/o reverb, the one from the subjective eval) would be:
-```
-python scnet/inference.py --noisy --mix_path /path/to/mixture/audio/file --out_path /path/where/to/store/estimates 
-```
+```bash
+# noisy (default)
+python scnet/inference.py --noisy --mix_path /path/to/mixture.wav --out_path /path/to/output/
 
-To infer with the `clean` model trained on (MUSDBMOISES) use:
-```
-python scnet/inference.py --mix_path /path/to/mixture/audio/file --out_path /path/where/to/store/estimates 
-```
+# clean
+python scnet/inference.py --mix_path /path/to/mixture.wav --out_path /path/to/output/
 
-To infer with the `rev` model (MUSDBMOISES * PaRIRset):
-```
-python scnet/inference.py --reverberant --mix_path /path/to/mixture/audio/file --out_path /path/where/to/store/estimates 
-```
+# rev
+python scnet/inference.py --reverberant --mix_path /path/to/mixture.wav --out_path /path/to/output/
 
-To infer with the `noisyrev` model (MUSDBMOISES+CrowdioSet)*PaRIRset:
-```
-python scnet/inference.py --noisy --reverberant --mix_path /path/to/mixture/audio/file --out_path /path/where/to/store/estimates 
+# noisyrev
+python scnet/inference.py --noisy --reverberant --mix_path /path/to/mixture.wav --out_path /path/to/output/
 ```
 
-## Inference
+## Evaluation
 
-To reproduce the paper results and objective evaluation, take `scnet/crowdioset_eval.py` (might need some tweaking).
+To reproduce the paper's objective evaluation, use [`scnet/crowdioset_eval.py`](scnet/crowdioset_eval.py) and [`scnet/parirset_eval.py`](scnet/parirset_eval.py) (may need some tweaking for your data layout).
 
 ---
 
 ## Citing
 
-
-
 If you find our work useful in your research, please consider citing:
+
 ```bibtex
 @inproceedings{guso2026crowdioset,
   title={CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source Separation},
@@ -102,10 +120,11 @@ If you find our work useful in your research, please consider citing:
 }
 ```
 
-This work is based on:
+This work builds on SCNet:
+
 ```bibtex
 @misc{tong2024scnet,
-      title={SCNet: Sparse Compression Network for Music Source Separation}, 
+      title={SCNet: Sparse Compression Network for Music Source Separation},
       author={Weinan Tong and Jiaxu Zhu and Jun Chen and Shiyin Kang and Tao Jiang and Yang Li and Zhiyong Wu and Helen Meng},
       year={2024},
       eprint={2401.13276},
@@ -114,4 +133,6 @@ This work is based on:
 }
 ```
 
+## License
 
+[MIT](LICENSE)
