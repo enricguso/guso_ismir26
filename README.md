@@ -1,6 +1,6 @@
-# SCNet
+# CrowdioSet and PaRIRset
 
-This repository is the official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source  Separation](http://arxiv.org/abs/2607.27828)
+This repository is the official implementation of [CrowdioSet and PaRIRset: Two Datasets Towards Live Music Source  Separation](http://arxiv.org/abs/2607.27828). You can find the project website [here](https://enricguso.github.io/crowdioset_parirset/).
 
 ![pipeline](images/pipeline.png)
 
